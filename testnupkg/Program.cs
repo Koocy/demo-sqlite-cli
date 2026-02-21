@@ -2,7 +2,6 @@
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
-using System.Threading.Tasks;
 using System.Data.SQLite;
 using System.IO;
 using System.Reflection;
@@ -19,10 +18,11 @@ namespace testnupkg
             readFromTableWhere = '3',
             readWholeTable = '4',
             insertIntoTable = '5',
-            deleteFromTable = '6',
-            dropTable = '7',
-            truncateTable = '8',
-            checkTableForDuplicates = '9',
+            insertDuplicate = '6',
+            deleteFromTable = '7',
+            dropTable = '8',
+            truncateTable = '9',
+            checkTableForDuplicates = 'd',
             viewColumnNames = 'c',
             viewPKColumnName = 'p',
             clrScreen = 's';
@@ -48,13 +48,41 @@ namespace testnupkg
             Console.ForegroundColor = ConsoleColor.White;
         }
 
+        static bool ynHelper(string message, bool warning)
+        {
+            if (warning) DisplayWarningMessage(message + " <y/n>");
+            else Console.Write(message + " <y/n>");
+
+            ConsoleKey ck;
+            try
+            {
+                do
+                {
+                    ck = ReadKeyWithEscape().Key;
+                }
+                while (ck != ConsoleKey.Y && ck != ConsoleKey.N);
+
+                Console.WriteLine();
+
+                if (ck == ConsoleKey.N) return false;
+                else if (ck == ConsoleKey.Y) return true;
+            }
+            catch (OperationCanceledException)
+            {
+                throw;
+            }
+
+            return false;
+        }
+
         //--
 
-        static void CreateTableIfNotExists(SQLiteConnection conn, string TableName, string VarsWithCommas)
+        static void CreateTableIfNotExists(SQLiteConnection conn, string TableName, List<string> Columns)
         {
             try
             {
-                new SQLiteCommand("CREATE TABLE IF NOT EXISTS " + TableName + "(" + VarsWithCommas + ");", conn).ExecuteNonQuery();
+                string command = string.Format("CREATE TABLE IF NOT EXISTS {0} ({1});", TableName, string.Join(", ", Columns));
+                new SQLiteCommand(command, conn).ExecuteNonQuery();
                 DisplaySuccessMessage("Command executed successfully");
             }
             catch (Exception e)
@@ -64,35 +92,22 @@ namespace testnupkg
             }
         }
 
-        static string ReadFromTable(SQLiteConnection conn, bool Write, string TableName, string[] ColumnsNoCommas)
+        static string ReadFromTable(SQLiteConnection conn, bool Write, string TableName, List<string> Columns)
         {
             string returnString = "";
-            string queryString = "SELECT ";
 
-            for (int i = 0; i < ColumnsNoCommas.Length; i++)
-            {
-                 queryString += ColumnsNoCommas[i] + ", ";
-            }
+            string command = string.Format("SELECT {0} FROM {1};", string.Join(", ", Columns), TableName);
 
-            char[] queryStringCharArray = queryString.ToCharArray();
-            queryString = "";
-
-            for (int i = 0; i < queryStringCharArray.Length - 2; i++)
-            {
-                queryString += queryStringCharArray[i].ToString();
-            }
-
-            queryString +=  " FROM " + TableName + ";";
-
-            //Console.WriteLine("Executing Query:\n" + queryString + "\n");
+            //Debug
+            //Console.WriteLine(command);
 
             try
             {
-                using (SQLiteDataReader reader = new SQLiteCommand(queryString, conn).ExecuteReader())
+                using (SQLiteDataReader reader = new SQLiteCommand(command, conn).ExecuteReader())
                 {
                     while (reader.Read())
                     {
-                        for (int i = 0; i < ColumnsNoCommas.Length; i++)
+                        for (int i = 0; i < Columns.Count; i++)
                         {
                             string value = "";
 
@@ -101,7 +116,7 @@ namespace testnupkg
                             else
                                 value = reader[i].ToString();
 
-                            returnString += ColumnsNoCommas[i] + ": " + value + "\n";
+                            returnString += Columns[i] + ": " + value + "\n";
                         }
                     }
 
@@ -123,48 +138,32 @@ namespace testnupkg
             return returnString;
         }
 
-        static string ReadFromTableWhere(SQLiteConnection conn, bool Write, string TableName, string[] ColumnsToReadNoCommas, string[] ColumnsConditionsNoCommas, string[] ValuesNoCommas)
+        static string ReadFromTableWhere(SQLiteConnection conn, bool Write, string TableName, List<string> ColumnsRead, List<string> ColumnsSearch, List<string> Values)
         {
             string returnString = "";
-            string queryString = "SELECT ";
 
-            for (int i = 0; i < ColumnsToReadNoCommas.Length; i++)
+            List<string> equals = new List<string>(ColumnsSearch.Count);
+
+            for (int i = 0; i < ColumnsSearch.Count; i++)
             {
-                 queryString += ColumnsToReadNoCommas[i] + ", ";
+                equals.Add(string.Format("{0}={1}", ColumnsSearch[i], Values[i]));
+
+                //Debug
+                //Console.WriteLine(equals[i]);
             }
 
-            char[] queryStringCharArray = queryString.ToCharArray();
-            queryString = "";
+            string command = string.Format("SELECT {0} FROM {1} WHERE {2};", string.Join(", ", ColumnsRead), TableName, string.Join(" AND ", equals));
 
-            for (int i = 0; i < queryStringCharArray.Length - 2; i++)
-            {
-                queryString += queryStringCharArray[i].ToString();
-            }
-
-            queryString +=  " FROM " + TableName + " WHERE ";
-
-            for (int i = 0; i < ColumnsConditionsNoCommas.Length; i++)
-            {
-                 queryString += ColumnsConditionsNoCommas[i] + "=" + ValuesNoCommas[i] + " AND ";
-            }
-
-            queryStringCharArray = queryString.ToCharArray();
-            queryString = "";
-
-            for (int i = 0; i < queryStringCharArray.Length - 5; i++)
-            {
-                queryString += queryStringCharArray[i].ToString();
-            }
-
-            //Console.WriteLine("Executing Query:\n" + queryString + "\n");
+            //Debug
+            //Console.WriteLine(command);
 
             try
             {
-                using (SQLiteDataReader reader = new SQLiteCommand(queryString, conn).ExecuteReader())
+                using (SQLiteDataReader reader = new SQLiteCommand(command, conn).ExecuteReader())
                 {
                     while (reader.Read())
                     {
-                        for (int i = 0; i < ColumnsToReadNoCommas.Length; i++)
+                        for (int i = 0; i < ColumnsRead.Count; i++)
                         {
                             string value = "";
 
@@ -173,7 +172,7 @@ namespace testnupkg
                             else
                                 value = reader[i].ToString();
 
-                            returnString += ColumnsToReadNoCommas[i] + ": " + value + "\n";
+                            returnString += ColumnsRead[i] + ": " + value + "\n";
                         }
                     }
 
@@ -195,13 +194,16 @@ namespace testnupkg
             return returnString;
         }
 
-        static void WriteNewRowsToTable(SQLiteConnection conn, int numRows, string TableName, string ColumnsWithCommas, string[] ValuesWithCommas)
+        static void WriteNewRowsToTable(SQLiteConnection conn, string TableName, List<string> Columns, List<string> Values)
         {
-            for (int i = 0; i < numRows; i++)
-            {
                 try
                 {
-                    new SQLiteCommand("INSERT INTO " + TableName + " (" + ColumnsWithCommas + ") VALUES (" + ValuesWithCommas[i] + ");", conn).ExecuteNonQuery();
+                    string command = string.Format("INSERT INTO {0} ({1}) VALUES ({2});", TableName, string.Join(", ", Columns), string.Join(", ", Values));
+                    
+                    //Debug
+                    //Console.WriteLine(command);
+                    
+                    new SQLiteCommand(command, conn).ExecuteNonQuery();
                     DisplaySuccessMessage("Command executed successfully");
                 }
                 catch (Exception e)
@@ -209,19 +211,21 @@ namespace testnupkg
                     DisplayErrorMessage(e.Message);
                     return;
                 }
-            }
         }
 
-        static void DeleteRowFromTable(SQLiteConnection conn, string TableName, string[] ColumnsNoCommas, string[] ValuesNoCommas)
+        static void DeleteRowFromTable(SQLiteConnection conn, string TableName, List<string> Columns, List<string> Values)
         {
-            string command = "DELETE FROM " + TableName + " WHERE ";
+            List<string> equals = new List<string>(Columns.Count);
 
-            for (int i = 0; i < ColumnsNoCommas.Length; i++)
+            for (int i = 0; i < Columns.Count; i++)
             {
-                command += ColumnsNoCommas[i] + "=" + ValuesNoCommas[i] + (i == ColumnsNoCommas.Length-1 ? ";" : " AND ");
+                equals.Add(string.Format("{0}={1}", Columns[i], Values[i]));
             }
 
-            //Console.WriteLine("Executing Command:\n" + command + "\n");
+            string command = string.Format("DELETE FROM {0} WHERE {1};", TableName, string.Join(" AND ", equals));
+
+            //Debug
+            //Console.WriteLine(command);
 
             try
             {
@@ -239,17 +243,8 @@ namespace testnupkg
         {
             try
             {
-                DisplayWarningMessage("Are you sure you want to DROP TABLE " + TableName + "? <y/n>");
-
-                ConsoleKey ck;
-
-                do
-                {
-                    ck = ReadKeyWithEscape().Key;
-                }
-                while (ck != ConsoleKey.Y && ck != ConsoleKey.N);
-
-                if (ck == ConsoleKey.N) return;
+                if (!ynHelper("Are you sure you want to DROP TABLE " + TableName + "?", true)) { throw new OperationCanceledException(); }
+ 
             }
             catch (OperationCanceledException)
             {
@@ -271,17 +266,7 @@ namespace testnupkg
         {
             try
             {
-                DisplayWarningMessage("Are you sure you want to TRUNCATE TABLE " + TableName + "? <y/n>");
-
-                ConsoleKey ck;
-
-                do
-                {
-                    ck = ReadKeyWithEscape().Key;
-                }
-                while (ck != ConsoleKey.Y && ck != ConsoleKey.N);
-
-                if (ck == ConsoleKey.N) return;
+                if (!ynHelper("Are you sure you want to TRUNCATE TABLE " + TableName + "?", true)) { throw new OperationCanceledException(); }
             }
             catch (OperationCanceledException)
             {
@@ -300,9 +285,9 @@ namespace testnupkg
             }
         }
 
-        static string[] FindColumnNames(SQLiteConnection conn, string TableName, bool Write)
+        static List<string> FindColumnNames(SQLiteConnection conn, string TableName, bool Write)
         {
-            List<String> ColumnNamesList = new List<string>();
+            List<String> ColumnNames = new List<string>();
 
             try
             {
@@ -310,7 +295,9 @@ namespace testnupkg
                 {
                     while (datareader.Read())
                     {
-                        ColumnNamesList.Add(datareader["name"].ToString());
+                        ColumnNames.Add(datareader["name"].ToString());
+
+                        if (Write) Console.WriteLine(datareader["name"].ToString());
                     }
 
                     //Console.WriteLine("Command executed successfully");
@@ -319,16 +306,7 @@ namespace testnupkg
             catch (Exception e)
             {
                 DisplayErrorMessage(e.Message);
-                return new string[0];
-            }
-
-            string[] ColumnNames = new string[ColumnNamesList.Count];
-
-            for (int i = 0; i < ColumnNames.Length; i++)
-            {
-                ColumnNames[i] = ColumnNamesList[i];
-
-                if (Write) Console.WriteLine(ColumnNames[i]);
+                return new List<string>(0);
             }
 
             return ColumnNames;
@@ -363,31 +341,35 @@ namespace testnupkg
 
         static void CheckTableForDuplicateRows(SQLiteConnection conn, string TableToCheck, bool WriteLog, bool DeleteDuplicateRows)
         {
-            List<string> ColumnsToCheckList = new List<string>(FindColumnNames(conn, TableToCheck, false));
-            string PKColumn = FindPKColumnName(conn, TableToCheck, false);
-            ColumnsToCheckList.Remove(PKColumn);
-            string[] ColumnsToCheck = new string[ColumnsToCheckList.Count];
+            List<string> ColumnsToCheck = new List<string>(FindColumnNames(conn, TableToCheck, false));
 
-            for (int i = 0; i < ColumnsToCheckList.Count; i++)
+            //Debug
+            //foreach(string s in ColumnsToCheck)
+            //Console.WriteLine(s);
+
+            string PKColumn = FindPKColumnName(conn, TableToCheck, false);
+
+            if (string.IsNullOrEmpty(PKColumn) || string.IsNullOrWhiteSpace(PKColumn))
             {
-                ColumnsToCheck[i] = ColumnsToCheckList[i];
-                //Debug
-                //Console.WriteLine(ColumnsToCheck[i]);
-            } 
+                DisplayWarningMessage("Table doesn't have a Primary Key column. Aborting...");
+                throw new OperationCanceledException();
+            }
+
+            ColumnsToCheck.Remove(PKColumn);
 
             string read = ReadFromTable(conn, false, TableToCheck, ColumnsToCheck);
             
             string[] lines = read.Split('\n');
 
-            int numTotalRows = lines.Length/ColumnsToCheck.Length;
+            int numTotalRows = lines.Length/ColumnsToCheck.Count;
 
             string[] rowsStrArray = new string[ numTotalRows ];
 
             for (int i = 0; i < numTotalRows; i++)
             {
-                for (int j = 0; j < ColumnsToCheck.Length; j++)
+                for (int j = 0; j < ColumnsToCheck.Count; j++)
                 {
-                    rowsStrArray[i] += lines[(i*ColumnsToCheck.Length) + j] + ((j == ColumnsToCheck.Length - 1) ? "" : "\n");
+                    rowsStrArray[i] += lines[(i * ColumnsToCheck.Count) + j] + ((j == ColumnsToCheck.Count - 1) ? "" : "\n");
                 }
             }
 
@@ -397,6 +379,10 @@ namespace testnupkg
             {
                 for (int j = i + 1; j < rows.Count; j++)
                 {
+                    //Debug
+                    //if (j == rows.Count - 1)
+                      //  Console.Write(rows[j]);
+
                     if (rows[i] == rows[j])
                     {
                         if (WriteLog) 
@@ -409,27 +395,35 @@ namespace testnupkg
                             if (WriteLog)
                             Console.WriteLine("Attempting to delete row " + (j+1) + "...\n");
 
-                            string[] values = new string[ColumnsToCheck.Length];
+                            List<string> values = new List<string>(ColumnsToCheck);
                             string[] rowLines = rows[j].Split('\n');
 
-                            for (int k = 0; k < values.Length; k++)
+                            for (int k = 0; k < values.Count; k++)
                             {
                                 values[k] = rowLines[k].Split(new string[] { ": " }, StringSplitOptions.None)[1];
 
                                 //Debug
+                                //Console.WriteLine(rowLines[k]);
                                 //Console.WriteLine(values[k]);
                             }
 
-                            string PKColumnName = FindPKColumnName(conn, TableToCheck, false);
-
-                            string PKValue = ReadFromTableWhere(conn, false, TableToCheck, new string[] { PKColumnName }, ColumnsToCheck, values).Split('\n')[1].Split(new string[] {": "}, StringSplitOptions.None)[1];
+                            string[] PKLines = ReadFromTableWhere(conn, false, TableToCheck, new List<string> {PKColumn}, ColumnsToCheck, values).Split('\n');
+                            string PKLineSecondRow = PKLines[1];
 
                             //Debug
-                            //Console.WriteLine(PKValue);
+                            //Console.WriteLine(PKLineSecondRow);
+
+                            string PKValueSecondRow = PKLineSecondRow.Split(new string[] {": "}, StringSplitOptions.None)[1];
+
+                            //Debug
+                            //Console.WriteLine(PKValueSecondRow);
 
                             try
                             {
-                                DeleteRowFromTable(conn, TableToCheck, new string[] { PKColumnName }, new string[] { PKValue });
+                                DeleteRowFromTable(conn, TableToCheck, new List<string> { PKColumn }, new List<string> { PKValueSecondRow });
+
+                                rows.RemoveAt(j);
+                                j--;
 
                                 if (WriteLog)
                                 {
@@ -451,7 +445,12 @@ namespace testnupkg
         {
             try
             {
-                string[] Columns = FindColumnNames(conn, TableName, false);
+                List<string> Columns = FindColumnNames(conn, TableName, false);
+
+                //Debug
+                //foreach (string s in Columns)
+                //Console.WriteLine(s);
+
                 return ReadFromTable(conn, Write, TableName, Columns);
             }
             catch (Exception e)
@@ -562,7 +561,7 @@ namespace testnupkg
             return numItems;
         }
 
-        static string[] AskUserForStrArray(bool col, bool row, bool AskUserForNumItems, int? numItems)
+        static List<string> AskUserForStrArray(bool col, bool row, bool AskUserForNumItems, int? numItems)
         {
             if (AskUserForNumItems) numItems = AskUserForNumberOfItems(col, row);
 
@@ -572,13 +571,12 @@ namespace testnupkg
             else if (row) thingToAskFor = "row";
             else thingToAskFor = "value";
 
-            string[] strArray = new string[0];
+            List<string> strArray = new List<string>();
 
             try
             {
                 for (int i = 0; i < numItems; i++)
                 {
-                    Array.Resize(ref strArray, strArray.Length + 1);
 
                 askforcolumns:
                     Console.Write((i + 1) + ". " + thingToAskFor + ": ");
@@ -588,7 +586,7 @@ namespace testnupkg
                         Console.WriteLine("Please enter a " + thingToAskFor);
                         goto askforcolumns;
                     }
-                    strArray[i] = input;
+                    strArray.Add(input);
                 }
 
                 Console.WriteLine();
@@ -611,7 +609,7 @@ namespace testnupkg
 
                 if (key.Key == ConsoleKey.Escape)
                 {
-                    Console.WriteLine("\nOperation cancelled.");
+                    DisplayWarningMessage("\n\nOperation cancelled.");
                     throw new OperationCanceledException();
                 }
 
@@ -668,8 +666,8 @@ namespace testnupkg
                 {
                     Console.WriteLine();
 
-                    Console.WriteLine("[{0}] Use existing table\n[{1}] Create table\n[{2}] Read from table\n[{3}] Read from table with WHERE conditions\n[{4}] Read entire table\n[{5}] Insert into table\n[{6}] Delete from table\n[{7}] DROP TABLE\n[{8}] TRUNCATE TABLE\n[{9}] Check table for duplicate rows\n[{10}] View column names of table\n[{11}] View Primary Key of table\n[{12}] Clear console screen\n[e] Execute non-query command\n[ESC] Cancel out of an operation\n",
-                        useTable, createTable, readFromTable, readFromTableWhere, readWholeTable, insertIntoTable, deleteFromTable, dropTable, truncateTable, checkTableForDuplicates, viewColumnNames, viewPKColumnName, clrScreen);
+                    Console.WriteLine("[{0}] Use existing table\n[{1}] Create table\n[{2}] Read from table\n[{3}] Read from table with WHERE conditions\n[{4}] Read entire table\n[{5}] Insert into table\n[{6}] Insert same row multiple times\n[{7}] Delete from table\n[{8}] DROP TABLE\n[{9}] TRUNCATE TABLE\n[{10}] Check table for duplicate rows\n[{11}] View column names of table\n[{12}] View Primary Key of table\n[{13}] Clear console screen\n[e] Execute non-query command\n[ESC] Cancel out of an operation\n",
+                        useTable, createTable, readFromTable, readFromTableWhere, readWholeTable, insertIntoTable, insertDuplicate, deleteFromTable, dropTable, truncateTable, checkTableForDuplicates, viewColumnNames, viewPKColumnName, clrScreen);
 
                     char ck = ReadKeyWithEscape().KeyChar;
                     ck = char.ToLower(ck);
@@ -683,7 +681,7 @@ namespace testnupkg
                         }
 
                     }
-                    else if (ck != useTable && ck != viewColumnNames && ck != viewPKColumnName && ck != clrScreen && ck != 'e')
+                    else if (ck != useTable && ck != viewColumnNames && ck != viewPKColumnName && ck != clrScreen && ck != 'e' && ck != checkTableForDuplicates)
                     {
                         Console.WriteLine("Invalid selection.\n");
                         goto start;
@@ -695,33 +693,38 @@ namespace testnupkg
                     switch (ck)
                     {
                         case createTable:
+                            DisplayWarningMessage("CREATING TABLE");
                             Console.Write("Enter table name to create: ");
                             string table_name = ReadLineWithEscape();
-                            Console.Write("Declare columns (Separate with commas and spaces): ");
-                            string vars = ReadLineWithEscape();
+                            Console.WriteLine("Declare columns");
+                            List<string> columns = AskUserForStrArray(true, false, true, null);
 
-                            CreateTableIfNotExists(conn, table_name, vars);
+                            CreateTableIfNotExists(conn, table_name, columns);
                             break;
 
                         case readFromTable:
-                            ReadFromTable(conn, true, defaultTable, AskUserForStrArray(true, false, true, null));
+                            DisplayWarningMessage("READING FROM TABLE " + defaultTable);
+                            Console.WriteLine("Specify the columns you want to read");
+                            List<string> colsToRead = AskUserForStrArray(true, false, true, null);
+                            ReadFromTable(conn, true, defaultTable, colsToRead);
                             break;
 
                         case readFromTableWhere:
+                            DisplayWarningMessage("READING FROM TABLE " + defaultTable);
                             Console.WriteLine("Specify the columns you want to read");
-                            string[] colsToRead = AskUserForStrArray(true, false, true, null);
+                            colsToRead = AskUserForStrArray(true, false, true, null);
+
                             Console.WriteLine("\nSpecify the columns to be included in the search query");
-                            string[] colsConditions = AskUserForStrArray(true, false, true, null);
-                            string[] values = new string[0];
+                            List<string> colsConditions = AskUserForStrArray(true, false, true, null);
+
+                            List<string> values = new List<string>();
                             Console.WriteLine("Specify the values to search for");
                             try
                             {
-                                for (int i = 0; i < colsConditions.Length; i++)
+                                for (int i = 0; i < colsConditions.Count; i++)
                                 {
-                                    Array.Resize(ref values, values.Length + 1);
-
                                     Console.Write(colsConditions[i] + "=");
-                                    values[i] = ReadLineWithEscape();
+                                    values.Add(ReadLineWithEscape());
                                 }
                             }
                             catch (OperationCanceledException)
@@ -740,69 +743,89 @@ namespace testnupkg
                             break;
 
                         case readWholeTable:
+                            DisplayWarningMessage("READING ALL ROWS FROM TABLE " + defaultTable + "\n");
                             ReadWholeTable(conn, defaultTable, true);
                             break;
 
                         case insertIntoTable:
-                            int numRows = AskUserForNumberOfItems(false, true);
+                            DisplayWarningMessage("INSERTING INTO TABLE " + defaultTable);
 
-                            Console.Write("Columns to insert (Separate with commas and spaces): ");
-                            string columnNames = ReadLineWithEscape();
+                            int numCols = 0;
+                            List<string> columnNames = new List<string>();
+
+                            Console.WriteLine("Specify how many rows to insert");
+                            int numRows = AskUserForNumberOfItems(false, true);
 
                             for (int i = 0; i < numRows; i++)
                             {
-                                Console.Write("Values for " + (i + 1) + ". row " + ((i == 0) ? "(Separate with commas and spaces)" : "") + ": ");
-                                WriteNewRowsToTable(conn, 1, defaultTable, columnNames, new string[] { ReadLineWithEscape() });
+                                Console.WriteLine("Specify the number of columns to insert");
+                                numCols = AskUserForNumberOfItems(true, false);
+
+                                Console.WriteLine("Specify columns to insert");
+                                columnNames = AskUserForStrArray(true, false, false, numCols);
+
+                                Console.WriteLine("Specify values to insert");
+                                values = AskUserForStrArray(false, false, false, numCols);
+
+                                WriteNewRowsToTable(conn, defaultTable, columnNames, values);
+                            }
+                            break;
+
+                        case insertDuplicate:
+                            DisplayWarningMessage("INSERTING DUPLICATE ROWS INTO TABLE " + defaultTable);
+
+                            Console.WriteLine("Specify how many times (rows) to insert");
+                            numRows = AskUserForNumberOfItems(false, true);
+
+                            Console.WriteLine("Specify the number of columns to insert");
+                            numCols = AskUserForNumberOfItems(true, false);
+
+                            Console.WriteLine("Specify columns to insert");
+                            columnNames = AskUserForStrArray(true, false, false, numCols);
+
+                            Console.WriteLine("Specify values to insert");
+                            values = AskUserForStrArray(false, false, false, numCols);
+
+                            for (int i = 0; i < numRows; i++)
+                            {
+                                WriteNewRowsToTable(conn, defaultTable, columnNames, values);
                             }
                             break;
 
                         case deleteFromTable:
-                            string[] Columns = AskUserForStrArray(true, false, true, null);
-                            DeleteRowFromTable(conn, defaultTable, Columns, AskUserForStrArray(false, false, false, Columns.Length));
+                            DisplayWarningMessage("DELETING FROM TABLE " + defaultTable);
+                            Console.WriteLine("Specify which columns will be in the WHERE statement");
+                            List<string> Columns = AskUserForStrArray(true, false, true, null);
+                            DeleteRowFromTable(conn, defaultTable, Columns, AskUserForStrArray(false, false, false, Columns.Count));
                             break;
 
                         case dropTable:
+                            DisplayErrorMessage("DROPPING TABLE " + defaultTable);
                             DropTable(conn, defaultTable);
                             defaultTable = null;
                             break;
 
                         case truncateTable:
+                            DisplayErrorMessage("TRUNCATING TABLE " + defaultTable);
                             TruncateTable(conn, defaultTable);
                             break;
 
                         case checkTableForDuplicates:
-                            bool writeLog = false, deleteDuplicates = false;
+                            DisplayWarningMessage("CHECKING TABLE " + defaultTable + " FOR DUPLICATES");
 
-                            Console.WriteLine("Write progress on screen? <y/n>");
-
-                            ConsoleKey ckCurrent;
-
-                            do
-                            {
-                                ckCurrent = ReadKeyWithEscape().Key;
-                            }
-                            while (ckCurrent != ConsoleKey.Y && ckCurrent != ConsoleKey.N);
-
-                            writeLog = (ckCurrent == ConsoleKey.Y);
-
-                            Console.WriteLine("\nDelete duplicate rows when they're found? <y/n>");
-
-                            do
-                            {
-                                ckCurrent = ReadKeyWithEscape().Key;
-                            }
-                            while (ckCurrent != ConsoleKey.Y && ckCurrent != ConsoleKey.N);
-
-                            deleteDuplicates = (ckCurrent == ConsoleKey.Y);
+                            bool writeLog = ynHelper("Write progress on screen?", false),
+                                deleteDuplicates = ynHelper("Delete duplicate rows when they're found?", false);
 
                             CheckTableForDuplicateRows(conn, defaultTable, writeLog, deleteDuplicates);
                             break;
 
                         case viewColumnNames:
+                            DisplayWarningMessage("VIEWING COLUMN NAMES OF TABLE " + defaultTable);
                             FindColumnNames(conn, defaultTable, true);
                             break;
 
                         case viewPKColumnName:
+                            DisplayWarningMessage("VIEWING PRIMARY KEY COLUMN NAME OF TABLE " + defaultTable);
                             FindPKColumnName(conn, defaultTable, true);
                             break;
 
@@ -811,6 +834,7 @@ namespace testnupkg
                             break;
 
                         case 'e':
+                            DisplayWarningMessage("EXECUTING NON-QUERY COMMAND");
                             try
                             {
                                 string command = "";
