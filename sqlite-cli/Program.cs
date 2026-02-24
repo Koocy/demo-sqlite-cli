@@ -98,9 +98,6 @@ namespace sqlite_cli
 
             string command = string.Format("SELECT {0} FROM {1};", string.Join(", ", Columns), TableName);
 
-            //Debug
-            //Console.WriteLine(command);
-
             try
             {
                 using (SQLiteDataReader reader = new SQLiteCommand(command, conn).ExecuteReader())
@@ -147,15 +144,9 @@ namespace sqlite_cli
             for (int i = 0; i < ColumnsSearch.Count; i++)
             {
                 equals.Add(string.Format("{0}={1}", ColumnsSearch[i], Values[i]));
-
-                //Debug
-                //Console.WriteLine(equals[i]);
             }
 
             string command = string.Format("SELECT {0} FROM {1} WHERE {2};", string.Join(", ", ColumnsRead), TableName, string.Join(" AND ", equals));
-
-            //Debug
-            //Console.WriteLine(command);
 
             try
             {
@@ -200,9 +191,6 @@ namespace sqlite_cli
                 {
                     string command = string.Format("INSERT INTO {0} ({1}) VALUES ({2});", TableName, string.Join(", ", Columns), string.Join(", ", Values));
                     
-                    //Debug
-                    //Console.WriteLine(command);
-                    
                     new SQLiteCommand(command, conn).ExecuteNonQuery();
                     DisplaySuccessMessage("Command executed successfully");
                 }
@@ -223,9 +211,6 @@ namespace sqlite_cli
             }
 
             string command = string.Format("DELETE FROM {0} WHERE {1};", TableName, string.Join(" AND ", equals));
-
-            //Debug
-            //Console.WriteLine(command);
 
             try
             {
@@ -324,8 +309,6 @@ namespace sqlite_cli
                     {
                         if (Convert.ToInt32(datareader["pk"]) == 1) PKColumnName = datareader["name"].ToString();
                     }
-
-                    //Console.WriteLine("Command executed successfully");
                 }
             }
             catch (Exception e)
@@ -342,10 +325,6 @@ namespace sqlite_cli
         static void CheckTableForDuplicateRows(SQLiteConnection conn, string TableToCheck, bool WriteLog, bool DeleteDuplicateRows)
         {
             List<string> ColumnsToCheck = new List<string>(FindColumnNames(conn, TableToCheck, false));
-
-            //Debug
-            //foreach(string s in ColumnsToCheck)
-            //Console.WriteLine(s);
 
             string PKColumn = FindPKColumnName(conn, TableToCheck, false);
 
@@ -379,10 +358,6 @@ namespace sqlite_cli
             {
                 for (int j = i + 1; j < rows.Count; j++)
                 {
-                    //Debug
-                    //if (j == rows.Count - 1)
-                      //  Console.Write(rows[j]);
-
                     if (rows[i] == rows[j])
                     {
                         if (WriteLog) 
@@ -401,22 +376,12 @@ namespace sqlite_cli
                             for (int k = 0; k < values.Count; k++)
                             {
                                 values[k] = rowLines[k].Split(new string[] { ": " }, StringSplitOptions.None)[1];
-
-                                //Debug
-                                //Console.WriteLine(rowLines[k]);
-                                //Console.WriteLine(values[k]);
                             }
 
                             string[] PKLines = ReadFromTableWhere(conn, false, TableToCheck, new List<string> {PKColumn}, ColumnsToCheck, values).Split('\n');
                             string PKLineSecondRow = PKLines[1];
 
-                            //Debug
-                            //Console.WriteLine(PKLineSecondRow);
-
                             string PKValueSecondRow = PKLineSecondRow.Split(new string[] {": "}, StringSplitOptions.None)[1];
-
-                            //Debug
-                            //Console.WriteLine(PKValueSecondRow);
 
                             try
                             {
@@ -446,10 +411,6 @@ namespace sqlite_cli
             try
             {
                 List<string> Columns = FindColumnNames(conn, TableName, false);
-
-                //Debug
-                //foreach (string s in Columns)
-                //Console.WriteLine(s);
 
                 return ReadFromTable(conn, Write, TableName, Columns);
             }
@@ -641,7 +602,7 @@ namespace sqlite_cli
 
             if (key.Key == ConsoleKey.Escape)
             {
-                Console.WriteLine("\nOperation cancelled.");
+                DisplayWarningMessage("\n\nOperation cancelled.");
                 throw new OperationCanceledException();
             }
 
