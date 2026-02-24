@@ -62,7 +62,7 @@ namespace sqlite_cli
                 }
                 while (ck != ConsoleKey.Y && ck != ConsoleKey.N);
 
-                Console.WriteLine();
+                Console.WriteLine("\n");
 
                 if (ck == ConsoleKey.N) return false;
                 else if (ck == ConsoleKey.Y) return true;
@@ -113,7 +113,19 @@ namespace sqlite_cli
                             else
                                 value = reader[i].ToString();
 
-                            returnString += Columns[i] + ": " + value + "\n";
+                            string line = Columns[i] + ": " + value + "\n";
+
+                            returnString += line;
+
+                            if (Write)
+                            {
+                                Console.Write(line);
+
+                                if ((i+1)%Columns.Count == 0)
+                                {
+                                    Console.WriteLine();
+                                }
+                            }
                         }
                     }
 
@@ -125,11 +137,6 @@ namespace sqlite_cli
             {
                 DisplayErrorMessage(e.Message);
                 return "";
-            }
-
-            if (Write)
-            {
-                Console.WriteLine(returnString);
             }
 
             return returnString;
@@ -163,7 +170,19 @@ namespace sqlite_cli
                             else
                                 value = reader[i].ToString();
 
-                            returnString += ColumnsRead[i] + ": " + value + "\n";
+                            string line = ColumnsRead[i] + ": " + value + "\n";
+
+                            returnString += line;
+
+                            if (Write)
+                            {
+                                Console.Write(line);
+
+                                if ((i+1)%ColumnsRead.Count == 0)
+                                {
+                                    Console.WriteLine();
+                                }
+                            }
                         }
                     }
 
@@ -197,7 +216,7 @@ namespace sqlite_cli
                 catch (Exception e)
                 {
                     DisplayErrorMessage(e.Message);
-                    return;
+                    throw;
                 }
         }
 
@@ -322,7 +341,7 @@ namespace sqlite_cli
             return PKColumnName;
         }
 
-        static void CheckTableForDuplicateRows(SQLiteConnection conn, string TableToCheck, bool WriteLog, bool DeleteDuplicateRows)
+        static void CheckTableForDuplicateRows(SQLiteConnection conn, string TableToCheck)
         {
             List<string> ColumnsToCheck = new List<string>(FindColumnNames(conn, TableToCheck, false));
 
@@ -338,21 +357,19 @@ namespace sqlite_cli
 
             string read = ReadFromTable(conn, false, TableToCheck, ColumnsToCheck);
             
-            string[] lines = read.Split('\n');
+            string[] lines = read.Split(new string[] {"\n"}, StringSplitOptions.None);
 
             int numTotalRows = lines.Length/ColumnsToCheck.Count;
 
-            string[] rowsStrArray = new string[ numTotalRows ];
+            List<string> rows = new List<string>(numTotalRows);
 
             for (int i = 0; i < numTotalRows; i++)
             {
                 for (int j = 0; j < ColumnsToCheck.Count; j++)
                 {
-                    rowsStrArray[i] += lines[(i * ColumnsToCheck.Count) + j] + ((j == ColumnsToCheck.Count - 1) ? "" : "\n");
+                    rows.Add(string.Join("\n", lines[(i * ColumnsToCheck.Count) + j]));
                 }
             }
-
-            List<string> rows = new List<string>(rowsStrArray);
 
             for (int i = 0; i < rows.Count - 1; i++)
             {
@@ -360,46 +377,30 @@ namespace sqlite_cli
                 {
                     if (rows[i] == rows[j])
                     {
-                        if (WriteLog) 
+                        List<string> values = new List<string>(ColumnsToCheck);
+                        string[] rowLines = rows[j].Split(new string [] {"\n"}, StringSplitOptions.None);
+
+                        for (int k = 0; k < values.Count; k++)
                         {
-                            Console.WriteLine("rows " + (i+1) + " and " + (j+1) + " are duplicates\n");
+                            values[k] = rowLines[k].Split(new string[] { ": " }, StringSplitOptions.None)[1];
                         }
 
-                        if (DeleteDuplicateRows)
+                        string[] PKLines = ReadFromTableWhere(conn, false, TableToCheck, new List<string> {PKColumn}, ColumnsToCheck, values).Split(new string[] {"\n"}, StringSplitOptions.None);
+                        string PKLineSecondRow = PKLines[1];
+
+                        string PKValueSecondRow = PKLineSecondRow.Split(new string[] {": "}, StringSplitOptions.None)[1];
+
+                        try
                         {
-                            if (WriteLog)
-                            Console.WriteLine("Attempting to delete row " + (j+1) + "...\n");
+                            DeleteRowFromTable(conn, TableToCheck, new List<string> { PKColumn }, new List<string> { PKValueSecondRow });
 
-                            List<string> values = new List<string>(ColumnsToCheck);
-                            string[] rowLines = rows[j].Split('\n');
-
-                            for (int k = 0; k < values.Count; k++)
-                            {
-                                values[k] = rowLines[k].Split(new string[] { ": " }, StringSplitOptions.None)[1];
-                            }
-
-                            string[] PKLines = ReadFromTableWhere(conn, false, TableToCheck, new List<string> {PKColumn}, ColumnsToCheck, values).Split('\n');
-                            string PKLineSecondRow = PKLines[1];
-
-                            string PKValueSecondRow = PKLineSecondRow.Split(new string[] {": "}, StringSplitOptions.None)[1];
-
-                            try
-                            {
-                                DeleteRowFromTable(conn, TableToCheck, new List<string> { PKColumn }, new List<string> { PKValueSecondRow });
-
-                                rows.RemoveAt(j);
-                                j--;
-
-                                if (WriteLog)
-                                {
-                                    DisplaySuccessMessage("Successfully deleted row\n");
-                                }
-                            }
-                            catch (Exception e)
-                            {
-                                DisplayErrorMessage(e.Message);
-                                return;
-                            }
+                            rows.RemoveAt(j);
+                            j--;
+                        }
+                        catch (Exception e)
+                        {
+                            DisplayErrorMessage(e.Message);
+                            return;
                         }
                     }
                 }
@@ -422,6 +423,26 @@ namespace sqlite_cli
         }
 
         //-
+
+        static bool isInputNumber(string input)
+        {
+            if (string.IsNullOrEmpty(input) || string.IsNullOrWhiteSpace(input))
+            {
+                DisplayWarningMessage("\nPlease enter a number or press ESC to cancel");
+                return false;
+            }
+
+            for (int i = 0; i < input.Length; i++)
+            {
+                if (!char.IsDigit(input[i]))
+                {
+                    DisplayWarningMessage("\nPlease enter a number or press ESC to cancel");
+                    return false;
+                }
+            }
+
+            return true;
+        }
 
         static void SetCurrentTable(SQLiteConnection conn, bool user)
         {
@@ -449,29 +470,13 @@ namespace sqlite_cli
                     throw new OperationCanceledException();
                 }
 
-                bool firsttry = true;
-            asktablenumber:
-                if (firsttry)
-                Console.WriteLine("\nThe table you choose will be marked as default for this session\nyou can change it anytime by the menu option");
-                Console.Write("Enter the number of the table you want to choose: ");
+                Console.Write("\nThe table you choose will be marked as default for this session\nyou can change it anytime by the menu option");
+                asktablenumber:
+                Console.Write("\nEnter the number of the table you want to choose: ");
 
                 string input = ReadLineWithEscape();
-                firsttry = false;
 
-                if (string.IsNullOrEmpty(input) || string.IsNullOrWhiteSpace(input))
-                {
-                    DisplayWarningMessage("\nPlease enter a number or press ESC to cancel");
-                    goto asktablenumber;
-                }
-
-                for (int i = 0; i < input.Length; i++)
-                {
-                    if (!char.IsDigit(input[i]))
-                    {
-                        DisplayWarningMessage("\nPlease enter a number or press ESC to cancel");
-                        goto asktablenumber;
-                    }
-                }
+                if (!isInputNumber(input)) goto asktablenumber;
 
                 int selected_table = int.Parse(input) - 1;
 
@@ -502,20 +507,20 @@ namespace sqlite_cli
 
             while (numItems <= 0)
             {
+            asknumber:
                 Console.Write("Number of " + thingToAskFor + ": ");
                 try
                 {
-                    numItems = int.Parse(ReadLineWithEscape());
+                    string input = ReadLineWithEscape();
+
+                    if (!isInputNumber(input)) goto asknumber;
+
+                    numItems = int.Parse(input);
                     Console.WriteLine();
                 }
                 catch (OperationCanceledException)
                 {
                     throw;
-                }
-                catch (Exception e)
-                {
-                    DisplayErrorMessage(e.Message);
-                    return 0;
                 }
             }
 
@@ -635,16 +640,7 @@ namespace sqlite_cli
                     char ck = ReadKeyWithEscape().KeyChar;
                     ck = char.ToLower(ck);
 
-                    if (char.IsDigit(ck))
-                    {
-                        if (ck < '0' || ck > '9')
-                        {
-                            Console.WriteLine("Invalid selection.\n");
-                            goto start;
-                        }
-
-                    }
-                    else if (ck != useTable && ck != viewColumnNames && ck != viewPKColumnName && ck != clrScreen && ck != 'e' && ck != checkTableForDuplicates)
+                    if (ck == '0' && ck != useTable && ck != viewColumnNames && ck != viewPKColumnName && ck != clrScreen && ck != 'e' && ck != checkTableForDuplicates)
                     {
                         Console.WriteLine("Invalid selection.\n");
                         goto start;
@@ -657,8 +653,15 @@ namespace sqlite_cli
                     {
                         case createTable:
                             DisplayWarningMessage("CREATING TABLE");
+                    asktablename:
                             Console.Write("Enter table name to create: ");
                             string table_name = ReadLineWithEscape();
+
+                            if (string.IsNullOrEmpty(table_name) || string.IsNullOrWhiteSpace(table_name))
+                            {
+                                goto asktablename;
+                            }
+
                             Console.WriteLine("Declare columns");
                             List<string> columns = AskUserForStrArray(true, false, true, null);
 
@@ -692,12 +695,12 @@ namespace sqlite_cli
                             }
                             catch (OperationCanceledException)
                             {
-                                throw;
+                                break;
                             }
                             catch (Exception e)
                             {
                                 DisplayErrorMessage(e.Message);
-                                return;
+                                break;
                             }
 
                             Console.WriteLine();
@@ -738,22 +741,30 @@ namespace sqlite_cli
                             DisplayWarningMessage("INSERTING DUPLICATE ROWS INTO TABLE " + defaultTable);
 
                             Console.WriteLine("Specify how many times (rows) to insert");
-                            numRows = AskUserForNumberOfItems(false, true);
 
-                            Console.WriteLine("Specify the number of columns to insert");
-                            numCols = AskUserForNumberOfItems(true, false);
-
-                            Console.WriteLine("Specify columns to insert");
-                            columnNames = AskUserForStrArray(true, false, false, numCols);
-
-                            Console.WriteLine("Specify values to insert");
-                            values = AskUserForStrArray(false, false, false, numCols);
-
-                            for (int i = 0; i < numRows; i++)
+                            try
                             {
-                                WriteNewRowsToTable(conn, defaultTable, columnNames, values);
+                                numRows = AskUserForNumberOfItems(false, true);
+
+                                Console.WriteLine("Specify the number of columns to insert");
+                                numCols = AskUserForNumberOfItems(true, false);
+
+                                Console.WriteLine("Specify columns to insert");
+                                columnNames = AskUserForStrArray(true, false, false, numCols);
+
+                                Console.WriteLine("Specify values to insert");
+                                values = AskUserForStrArray(false, false, false, numCols);
+
+                                for (int i = 0; i < numRows; i++)
+                                {
+                                    WriteNewRowsToTable(conn, defaultTable, columnNames, values);
+                                }
+                                break;
                             }
-                            break;
+                            catch
+                            {
+                                break;
+                            }
 
                         case deleteFromTable:
                             DisplayWarningMessage("DELETING FROM TABLE " + defaultTable);
@@ -776,10 +787,10 @@ namespace sqlite_cli
                         case checkTableForDuplicates:
                             DisplayWarningMessage("CHECKING TABLE " + defaultTable + " FOR DUPLICATES");
 
-                            bool writeLog = ynHelper("Write progress on screen?", false),
-                                deleteDuplicates = ynHelper("Delete duplicate rows when they're found?", false);
+                            if (!ynHelper("This operation will check the table " + defaultTable + " for rows that have the same values except for their Primary Key field and delete them. Proceed?", true))
+                                break;
 
-                            CheckTableForDuplicateRows(conn, defaultTable, writeLog, deleteDuplicates);
+                            CheckTableForDuplicateRows(conn, defaultTable);
                             break;
 
                         case viewColumnNames:
@@ -813,7 +824,7 @@ namespace sqlite_cli
                             catch (Exception e)
                             {
                                 DisplayErrorMessage(e.Message);
-                                return;
+                                break;
                             }
                             break;
                             
